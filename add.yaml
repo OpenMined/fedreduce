@@ -1,0 +1,42 @@
+project: "add"
+uid: "445ef5f3-7d74-4cfd-ac73-bdc60173e756"
+file: funcs.py
+funcs:
+  - "map_reduce"
+  - "add"
+datasite: "c@openmined.org"
+
+steps:
+  - run: "c@openmined.org"
+    input_1:
+      type: "StaticPipe"
+      value: 0
+
+    input_2:
+      type: "FilePipe"
+      path: "{datasite}/data/data.txt"
+
+    operation: "add"
+
+    output:
+      type: "FilePipe"
+      path: "{datasite}/{project}/data/{step}/result.txt"
+      access:
+        - "b@openmined.org"
+
+  - run: "b@openmined.org"
+    input_1:
+      type: "FilePipe"
+      path: "{prev_datasite}/{project}/data/{prev_step}/result.txt"
+
+    input_2:
+      type: "FilePipe"
+      path: "{datasite}/data/data.txt"
+
+    operation: "add"
+
+    output:
+      type: "FilePipe"
+      path: "{datasite}/{project}/data/{step}/result.txt"
+      access:
+        - "c@openmined.org"
