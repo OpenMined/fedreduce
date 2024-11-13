@@ -1,42 +1,34 @@
+author: "c@openmined.org"
 project: "add"
+language: "python"
+description: "Add two numbers"
 uid: "445ef5f3-7d74-4cfd-ac73-bdc60173e756"
-file: funcs.py
-funcs:
-  - "map_reduce"
-  - "add"
-datasite: "c@openmined.org"
+code:
+  - functions.py
 
+# Define shared resources using anchors
+shared_inputs:
+  data: &data FilePipe("{datasite}/data/data.txt")
+  output: &output FilePipe("{datasite}/fedreduce/{project}/data/{step}/result.txt")
+
+# Define the main workflow parameters
+workflow:
+  datasites: &datasites
+    - "madhava@openmined.org"
+
+# Define what each step does
 steps:
-  - run: "c@openmined.org"
-    input_1:
-      type: "StaticPipe"
-      value: 0
-
-    input_2:
-      type: "FilePipe"
-      path: "{datasite}/data/data.txt"
-
-    operation: "add"
-
+  - first:
+      inputs:
+        - a: StaticPipe(0) # Override input for the first step
+  - foreach: *datasites
+    run: "{datasite}"
+    function: "add"
+    inputs:
+      - a: FilePipe("{prev_datasite}/fedreduce/{project}/data/{prev_step}/result.txt")
+      - b: *data
     output:
-      type: "FilePipe"
-      path: "{datasite}/{project}/data/{step}/result.txt"
-      access:
-        - "b@openmined.org"
-
-  - run: "b@openmined.org"
-    input_1:
-      type: "FilePipe"
-      path: "{prev_datasite}/{project}/data/{prev_step}/result.txt"
-
-    input_2:
-      type: "FilePipe"
-      path: "{datasite}/data/data.txt"
-
-    operation: "add"
-
-    output:
-      type: "FilePipe"
-      path: "{datasite}/{project}/data/{step}/result.txt"
-      access:
-        - "c@openmined.org"
+      path: *output
+      permissions:
+        read:
+          - "{next_datasite}"

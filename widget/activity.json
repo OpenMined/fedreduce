@@ -1,0 +1,27 @@
+{
+  "invite": [
+    {
+      "state": "invite",
+      "name": "Add",
+      "file_timestamp": 1731465635.1507516,
+      "uid": "445ef5f3-7d74-4cfd-ac73-bdc60173e756",
+      "description": "Add two numbers",
+      "language": "python",
+      "author": "c@openmined.org",
+      "sourceUrl": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add",
+      "sharedInputs": "FilePipe(\"{datasite}/data/data.txt\")",
+      "datasites": [
+        "b@openmined.org",
+        "c@openmined.org",
+        "madhava@openmined.org"
+      ],
+      "resultUrl": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add/results",
+      "code": {
+        "functions.py": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add/functions.py"
+      },
+      "joined_datasites": []
+    }
+  ],
+  "running": [],
+  "completed": []
+}

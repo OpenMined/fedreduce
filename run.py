@@ -1,9 +1,13 @@
 import os
+import traceback
 import argparse
 import time
-from syftbox.lib import Client, SyftPermission
 import yaml
-from sdk import *
+from syftbox.lib import Client, SyftPermission
+from sdk import StaticPipe, FilePipe
+
+import copy
+import re
 
 
 def load_yaml(file_path):
@@ -11,116 +15,179 @@ def load_yaml(file_path):
         return yaml.safe_load(file)
 
 
-def process_template(
-    path_template, email, project, step_num, prev_step_num=None, prev_datasite=None
-):
-    return path_template.format(
-        datasite=email,
-        project=project,
-        step=step_num,
-        prev_step=prev_step_num if prev_step_num is not None else step_num - 1,
-        prev_datasite=prev_datasite,
-    )
+def process_template(path_template, context):
+    """Replaces placeholders in path templates with values from the context."""
+    return path_template.format(**context)
 
 
-def execute_step(
-    client, step, email, project, step_num, prev_step_num, prev_datasite, log_file
-):
-    # Process input_1
-    if step["input_1"]["type"] == "StaticPipe":
-        input_1 = StaticPipe(step["input_1"]["value"])
-    elif step["input_1"]["type"] == "FilePipe":
-        input_1_path = process_template(
-            step["input_1"]["path"],
-            email,
-            project,
-            step_num,
-            prev_step_num,
-            prev_datasite,
+def add(**kwargs):
+    # Perform addition on all provided inputs by reading their values
+    # Assumes each input is a pipe with a `read()` method.
+    result = sum(input_pipe.read() for input_pipe in kwargs.values())
+    return result
+
+
+def instantiate_pipe(client, pipe_config, context):
+    """Instantiates StaticPipe or FilePipe based on YAML configuration."""
+
+    if isinstance(pipe_config, dict):
+        # Unpack the nested structure for class instantiation
+        if "StaticPipe" in pipe_config:
+            value = pipe_config["StaticPipe"]
+            return StaticPipe(value)
+        elif "FilePipe" in pipe_config:
+            value = pipe_config["FilePipe"]
+            file_path = process_template(value, context)
+            return FilePipe(client.sync_folder / file_path)
+
+    elif isinstance(pipe_config, str):
+        # Check if pipe_config is in the form "FilePipe(...)" or "StaticPipe(...)"
+        file_pipe_match = re.match(r'FilePipe\("(.+)"\)', pipe_config)
+        static_pipe_match = re.match(r"StaticPipe\((.+)\)", pipe_config)
+
+        if file_pipe_match:
+            # Extract the path inside the FilePipe() syntax
+            path_template = file_pipe_match.group(1)
+            file_path = process_template(path_template, context)
+            return FilePipe(client.sync_folder / file_path)
+
+        elif static_pipe_match:
+            # Extract the value inside StaticPipe() and convert it to the correct type
+            static_value = static_pipe_match.group(1)
+            # Attempt to parse as int or float if possible, otherwise keep as a string
+            try:
+                static_value = int(static_value)
+            except ValueError:
+                try:
+                    static_value = float(static_value)
+                except ValueError:
+                    pass  # Keep as string if it can't be converted
+            return StaticPipe(static_value)
+
+    # If none of the cases match, raise an error
+    raise ValueError(f"Invalid pipe configuration: {pipe_config}")
+
+
+def execute_step(client, step, context, log_file) -> bool:
+    try:
+        # Process inputs dynamically, allowing for arbitrary keys
+        inputs = {}
+        for input_item in step["inputs"]:
+            # Each `input_item` will have one key, so we extract it dynamically
+            key, pipe_config = next(iter(input_item.items()))
+            inputs[key] = instantiate_pipe(client, pipe_config, context)
+
+        if not all(pipe.ready() for pipe in inputs.values()):
+            message = f"Inputs not ready for {step}.\n"
+            print(message)
+            with open(log_file, "a") as log:
+                log.write(message)
+            return False
+
+        # Perform operation
+        operation = step["function"]
+        if operation == "add":
+            # Call the add function with all inputs as keyword arguments
+            result = add(**inputs)
+
+        # Process output
+        output_pipe = instantiate_pipe(client, step["output"]["path"], context)
+        print("output path", output_pipe)
+
+        folder = os.path.dirname(output_pipe.file_path)
+        os.makedirs(folder, exist_ok=True)
+        output_pipe.write(result)
+
+        # Set permissions
+        access_emails = [client.email]
+        for email in step["output"]["permissions"].get("read", []):
+            access_email = process_template(email, context)
+            access_emails.append(access_email)
+
+        permission = SyftPermission(
+            admin=access_emails, read=access_emails, write=access_emails
         )
-        print(step, email, "input_1_path", input_1_path)
-        input_1_sync_path = client.sync_folder / input_1_path
-        print("ABS", input_1_sync_path)
-        input_1 = FilePipe(input_1_sync_path)
+        permission.ensure(folder)
 
-    # Process input_2
-    if step["input_2"]["type"] == "StaticPipe":
-        input_2 = StaticPipe(step["input_2"]["value"])
-    elif step["input_2"]["type"] == "FilePipe":
-        input_2_path = process_template(
-            step["input_2"]["path"],
-            email,
-            project,
-            step_num,
-            prev_step_num,
-            prev_datasite,
-        )
-        input_2_sync_path = client.sync_folder / input_2_path
-        input_2 = FilePipe(input_2_sync_path)
-        print(step, email, "input_2_path", input_2.file_path)
+        # Log the step execution
+        with open(log_file, "a") as log:
+            message = f"Ran operation '{operation}' with result {result} and saved to {output_pipe.file_path}\n"
+            log.write(message)
+            print(message)
+        return True
 
-    # Perform operation
-    operation = step["operation"]
-    if operation == "add":
-        result = input_1.read() + input_2.read()
-
-    # Process output
-    output_path = process_template(
-        step["output"]["path"], email, project, step_num, prev_step_num, prev_datasite
-    )
-    output_sync_path = client.sync_folder / output_path
-    folder = os.path.dirname(output_sync_path)
-    os.makedirs(folder, exist_ok=True)
-
-    print("output", output_sync_path)
-    output = FilePipe(output_sync_path)
-    output.write(result)
-
-    # Set permissions
-    access_emails = step["output"].get("access", [])
-    access_emails = [email] + access_emails
-
-    permission = SyftPermission(
-        admin=access_emails, read=access_emails, write=access_emails
-    )
-    permission.ensure(folder)
-
-    # Log the step execution
-    with open(log_file, "a") as log:
-        log.write(
-            f"Step {step_num}: Ran operation '{operation}' with result {result} and saved to {output_path}\n"
-        )
+    except Exception as e:
+        # Print the full traceback to help identify the exact line of the error
+        print(f"An error occurred during execute_step: {e}")
+        traceback.print_exc()  # This prints the full traceback to the console
+        raise e
 
 
 def run_steps_for_email(client, pipeline, timeout=10, log_file="execution.log"):
     email = client.email
     project = pipeline["project"]
+    datasites = pipeline["workflow"]["datasites"]
     steps = pipeline["steps"]
 
+    # Check for optional `first` configuration
+    first_step_config = steps[0].get("first")
+    foreach_step_config = steps[1]
+
     start_time = time.time()
-    prev_datasite = None
-    for step_num, step in enumerate(steps):
-        if step["run"] != email:
-            prev_datasite = step["run"]
+
+    for step_num, datasite in enumerate(datasites):
+        # Prepare the context for placeholders
+        context = {
+            "datasite": datasite,
+            "project": project,
+            "step": step_num,
+            "prev_step": step_num - 1 if step_num > 0 else len(datasites) - 1,
+            "next_step": (step_num + 1) % len(datasites),
+            "prev_datasite": datasites[step_num - 1] if step_num > 0 else datasites[-1],
+            "next_datasite": datasites[(step_num + 1) % len(datasites)],
+        }
+
+        # Determine which configuration to use for the step
+        print("A", step_num, first_step_config)
+        if step_num == 0 and first_step_config:
+            print("fdsafdsa")
+            # Start with a deep copy of the `foreach` configuration
+            step_config = copy.deepcopy(foreach_step_config)
+
+            # Merge `first` inputs to override specific values in `foreach`
+            if "inputs" in first_step_config:
+                first_inputs_dict = {
+                    k: v
+                    for item in first_step_config["inputs"]
+                    for k, v in item.items()
+                }
+                foreach_inputs_dict = {
+                    k: v for item in step_config["inputs"] for k, v in item.items()
+                }
+                print("first_inputs_dict", first_inputs_dict)
+                # Override the inputs in `foreach` with those in `first`
+                merged_inputs_dict = {**foreach_inputs_dict, **first_inputs_dict}
+                print("merged_inputs_dict", merged_inputs_dict)
+                step_config["inputs"] = [{k: v} for k, v in merged_inputs_dict.items()]
+                print("step_config", step_config)
+        else:
+            print("ELSE")
+            # Use `foreach` step configuration directly
+            step_config = foreach_step_config
+
+        # Check if this step should be run by the current client
+        if datasite != email:
+            print(f"Skipping step {step_num} for other datasite.")
             continue
 
-        print("stepnum", step_num, step)
+        # Execute the step
         while time.time() - start_time < timeout:
             try:
-                prev_step_num = step_num - 1 if step_num > 0 else None
-                execute_step(
-                    client,
-                    step,
-                    email,
-                    project,
-                    step_num,
-                    prev_step_num,
-                    prev_datasite,
-                    log_file,
-                )
-                print(f"Step {step_num} completed for {email}.")
-                prev_datasite = email  # Update prev_datasite to current step's email
-                break
+                success = execute_step(client, step_config, context, log_file)
+                if success:
+                    print(f"Step {step_num} completed for {email}.")
+                    break
+                time.sleep(1)
             except Exception as e:
                 print(
                     f"Step {step_num} for {email} failed with error: {e}. Retrying..."
@@ -138,15 +205,15 @@ def main():
     parser.add_argument("--config", required=True, help="Path to the Client Config")
     args = parser.parse_args()
 
-    # Load the config path from the command-line argument
+    # Load the client configuration
     config_path = args.config
-
     client = Client.load(config_path)
     print(client)
 
     # Load YAML configuration
     pipeline = load_yaml("./add.yaml")
 
+    # Run steps for the client
     run_steps_for_email(client, pipeline, timeout=120, log_file=f"./{client.email}.log")
 
 
