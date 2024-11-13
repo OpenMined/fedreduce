@@ -123,99 +123,87 @@ def execute_step(client, step, context, log_file) -> bool:
         raise e
 
 
-def run_steps_for_email(client, pipeline, timeout=10, log_file="execution.log"):
-    email = client.email
-    project = pipeline["project"]
-    datasites = pipeline["workflow"]["datasites"]
-    steps = pipeline["steps"]
+def run_steps_for_email(client, pipeline, log_file, timeout=10):
+    try:
+        email = client.email
+        project = pipeline["project"]
+        datasites = pipeline["workflow"]["datasites"]
+        print("datasites", datasites)
+        steps = pipeline["steps"]
 
-    # Check for optional `first` configuration
-    first_step_config = steps[0].get("first")
-    foreach_step_config = steps[1]
+        # Check for optional `first` configuration
+        first_step_config = steps[0].get("first")
+        foreach_step_config = steps[1]
 
-    start_time = time.time()
+        start_time = time.time()
 
-    for step_num, datasite in enumerate(datasites):
-        # Prepare the context for placeholders
-        context = {
-            "datasite": datasite,
-            "project": project,
-            "step": step_num,
-            "prev_step": step_num - 1 if step_num > 0 else len(datasites) - 1,
-            "next_step": (step_num + 1) % len(datasites),
-            "prev_datasite": datasites[step_num - 1] if step_num > 0 else datasites[-1],
-            "next_datasite": datasites[(step_num + 1) % len(datasites)],
-        }
+        for step_num, datasite in enumerate(datasites):
+            print(f"Running step {step_num} for {email}.")
+            # Prepare the context for placeholders
+            context = {
+                "datasite": datasite,
+                "project": project,
+                "step": step_num,
+                "prev_step": step_num - 1 if step_num > 0 else len(datasites) - 1,
+                "next_step": (step_num + 1) % len(datasites),
+                "prev_datasite": datasites[step_num - 1]
+                if step_num > 0
+                else datasites[-1],
+                "next_datasite": datasites[(step_num + 1) % len(datasites)],
+            }
 
-        # Determine which configuration to use for the step
-        print("A", step_num, first_step_config)
-        if step_num == 0 and first_step_config:
-            print("fdsafdsa")
-            # Start with a deep copy of the `foreach` configuration
-            step_config = copy.deepcopy(foreach_step_config)
+            # Determine which configuration to use for the step
+            print("A", step_num, first_step_config)
+            if step_num == 0 and first_step_config:
+                print("fdsafdsa")
+                # Start with a deep copy of the `foreach` configuration
+                step_config = copy.deepcopy(foreach_step_config)
 
-            # Merge `first` inputs to override specific values in `foreach`
-            if "inputs" in first_step_config:
-                first_inputs_dict = {
-                    k: v
-                    for item in first_step_config["inputs"]
-                    for k, v in item.items()
-                }
-                foreach_inputs_dict = {
-                    k: v for item in step_config["inputs"] for k, v in item.items()
-                }
-                print("first_inputs_dict", first_inputs_dict)
-                # Override the inputs in `foreach` with those in `first`
-                merged_inputs_dict = {**foreach_inputs_dict, **first_inputs_dict}
-                print("merged_inputs_dict", merged_inputs_dict)
-                step_config["inputs"] = [{k: v} for k, v in merged_inputs_dict.items()]
-                print("step_config", step_config)
-        else:
-            print("ELSE")
-            # Use `foreach` step configuration directly
-            step_config = foreach_step_config
+                # Merge `first` inputs to override specific values in `foreach`
+                if "inputs" in first_step_config:
+                    first_inputs_dict = {
+                        k: v
+                        for item in first_step_config["inputs"]
+                        for k, v in item.items()
+                    }
+                    foreach_inputs_dict = {
+                        k: v for item in step_config["inputs"] for k, v in item.items()
+                    }
+                    print("first_inputs_dict", first_inputs_dict)
+                    # Override the inputs in `foreach` with those in `first`
+                    merged_inputs_dict = {**foreach_inputs_dict, **first_inputs_dict}
+                    print("merged_inputs_dict", merged_inputs_dict)
+                    step_config["inputs"] = [
+                        {k: v} for k, v in merged_inputs_dict.items()
+                    ]
+                    print("step_config", step_config)
+            else:
+                print("ELSE")
+                # Use `foreach` step configuration directly
+                step_config = foreach_step_config
 
-        # Check if this step should be run by the current client
-        if datasite != email:
-            print(f"Skipping step {step_num} for other datasite.")
-            continue
+            # Check if this step should be run by the current client
+            if datasite != email:
+                print(f"Skipping step {step_num} for other datasite.")
+                continue
 
-        # Execute the step
-        while time.time() - start_time < timeout:
-            try:
-                success = execute_step(client, step_config, context, log_file)
-                if success:
-                    print(f"Step {step_num} completed for {email}.")
-                    break
-                time.sleep(1)
-            except Exception as e:
+            # Execute the step
+            while time.time() - start_time < timeout:
+                try:
+                    success = execute_step(client, step_config, context, log_file)
+                    if success:
+                        print(f"Step {step_num} completed for {email}.")
+                        break
+                    time.sleep(1)
+                except Exception as e:
+                    print(
+                        f"Step {step_num} for {email} failed with error: {e}. Retrying..."
+                    )
+                    time.sleep(1)  # Retry delay
+            else:
                 print(
-                    f"Step {step_num} for {email} failed with error: {e}. Retrying..."
+                    f"Timeout reached for step {step_num} for {email}. Check logs for details."
                 )
-                time.sleep(1)  # Retry delay
-        else:
-            print(
-                f"Timeout reached for step {step_num} for {email}. Check logs for details."
-            )
-
-
-def main():
-    # Set up argument parser
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True, help="Path to the Client Config")
-    args = parser.parse_args()
-
-    # Load the client configuration
-    config_path = args.config
-    client = Client.load(config_path)
-    print(client)
-
-    # Load YAML configuration
-    pipeline = load_yaml("./add.yaml")
-
-    # Run steps for the client
-    run_steps_for_email(client, pipeline, timeout=120, log_file=f"./{client.email}.log")
-
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        print(f"Error running pipeline for {email}: {str(e)}")
+        traceback.print_exc()

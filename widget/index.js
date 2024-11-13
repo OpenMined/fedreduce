@@ -115,6 +115,8 @@ function createProjectCard(project, status, joinedProjects) {
       : [...project.datasites, metadataDatasite]
     : project.datasites;
 
+  const isAuthor = metadataDatasite === project.author;
+
   return `
     <div class="project-card">
         <div class="project-title">${project.name}</div>
@@ -168,7 +170,7 @@ function createProjectCard(project, status, joinedProjects) {
             </ul>
         </div>
 
-        ${getActionButton(status, project, isJoined)}
+        ${getActionButton(status, project, isJoined, isAuthor)}
     </div>
   `;
 }
@@ -201,15 +203,55 @@ function renderProjectSection(containerId, projects, status, joinedProjects) {
     .join("");
 }
 
-function getActionButton(status, project, isJoined) {
+function getActionButton(status, project, isJoined, isAuthor) {
+  console.log(status, project, isJoined, isAuthor); // Debugging
+
+  let actionButtons = "";
+
+  // If the project is in "invite" status, show Join/Leave button based on isJoined status
   if (status === "invite") {
-    return isJoined
+    actionButtons += isJoined
       ? `<button class="leave-button" onclick="leaveProject('${project.sourceUrl}')">Leave Project</button>`
       : `<button class="join-button" onclick="joinProject('${project.sourceUrl}')">Join Project</button>`;
-  } else if (status === "completed") {
-    return `<a href="${project.resultUrl}" class="result-link">View Results</a>`;
   }
-  return "";
+
+  // If the user is the author, show the "Start" button for invite status
+  if (status === "invite" && isAuthor) {
+    actionButtons += `<button class="start-button" onclick="startProject('${project.sourceUrl}')">Start</button>`;
+  }
+
+  // Show the "View Results" link if the project is completed
+  if (status === "completed") {
+    actionButtons += `<a href="${project.resultUrl}" class="result-link">View Results</a>`;
+  }
+
+  return actionButtons;
+}
+
+async function startProject(sourceUrl) {
+  const url = `http://localhost:${serverPort}/apps/command/fedreduce`;
+  const payload = {
+    command: "start",
+    source: sourceUrl,
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      alert("Project started successfully!");
+      fetchProjects(); // Refresh projects to move it to running
+    } else {
+      alert("Failed to start project.");
+    }
+  } catch (error) {
+    console.error("Error starting project:", error);
+    alert("Error connecting to the server.");
+  }
 }
 
 async function joinProject(sourceUrl) {

@@ -13,8 +13,7 @@ shared_inputs:
 
 # Define the main workflow parameters
 workflow:
-  datasites: &datasites
-    - "madhava@openmined.org"
+  datasites: &datasites []
 
 # Define what each step does
 steps:

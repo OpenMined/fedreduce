@@ -3,21 +3,20 @@
     {
       "state": "invite",
       "name": "Add",
-      "file_timestamp": 1731465635.1507516,
+      "file_timestamp": 1731475038.7733624,
       "uid": "445ef5f3-7d74-4cfd-ac73-bdc60173e756",
       "description": "Add two numbers",
       "language": "python",
       "author": "c@openmined.org",
-      "sourceUrl": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add",
+      "sourceUrl": "/datasites/c@openmined.org/fedreduce/invite/add",
       "sharedInputs": "FilePipe(\"{datasite}/data/data.txt\")",
       "datasites": [
         "b@openmined.org",
-        "c@openmined.org",
-        "madhava@openmined.org"
+        "c@openmined.org"
       ],
-      "resultUrl": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add/results",
+      "resultUrl": "/datasites/c@openmined.org/fedreduce/invite/add/results",
       "code": {
-        "functions.py": "http://syftbox.openmined.org/datasites/c@openmined.org/public/fedreduce/add/functions.py"
+        "functions.py": "/datasites/c@openmined.org/fedreduce/invite/add/functions.py"
       },
       "joined_datasites": []
     }

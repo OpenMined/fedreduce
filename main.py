@@ -1,4 +1,5 @@
 import json
+import shutil
 
 from typing import Dict, Any
 import os
@@ -8,6 +9,8 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+from run import run_steps_for_email
+
 
 import yaml
 from syftbox.lib import Client, SyftPermission
@@ -30,10 +33,12 @@ def create_folders():
     public_fedreduce_folder = client.sync_folder / client.email / "public" / __name__
     public_invite_fedreduce_folder = public_fedreduce_folder / "invite"
     public_join_fedreduce_folder = public_fedreduce_folder / "join"
+    public_running_fedreduce_folder = public_fedreduce_folder / "running"
 
     os.makedirs(public_fedreduce_folder, exist_ok=True)
     os.makedirs(public_invite_fedreduce_folder, exist_ok=True)
     os.makedirs(public_join_fedreduce_folder, exist_ok=True)
+    os.makedirs(public_running_fedreduce_folder, exist_ok=True)
 
     permission = SyftPermission.mine_with_public_read(client.email)
     permission.ensure(public_fedreduce_folder)
@@ -101,7 +106,8 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
     datasites = sorted(list(set(datasites)))
 
     # Construct base URLs using author and project
-    base_url = f"http://syftbox.openmined.org/datasites/{yaml_data['author']}/public/fedreduce/{yaml_data['project']}"
+    url = public_url(os.path.dirname(yaml_path))
+    base_url = "/datasites" + url.split("/datasites")[-1]
 
     # Generate a nested dictionary under `code` for each file in the YAML's `code` list
     code_files = yaml_data.get("code", [])
@@ -182,5 +188,104 @@ def generate_home():
     )
 
 
+def run_projects():
+    my_join_projects = datasites_file_glob(
+        client, pattern=f"**/{client.email}/public/{__name__}/**/*.yaml.join"
+    )
+
+    join_projects = []
+    running_projects = []
+    for datasite, join_path in my_join_projects:
+        print("join_path", join_path)
+        project = {}
+        project["yaml_join_path"] = join_path
+        if "/join/" in str(join_path):
+            state = "join"
+        elif "/running/" in str(join_path):
+            state = "running"
+        elif "/complete/" in str(join_path):
+            state = "complete"
+        else:
+            state = "unknown"
+        project["state"] = state
+        last = str(join_path).split("public/fedreduce/")[-1]
+        parts = last.split("/")
+        author = None
+        for part in parts:
+            if "@" in part:
+                author = part
+        project["author"] = author
+        api_name = join_path.name.split(".yaml")[0]
+        api_file_name = join_path.name.split(".join")[0]
+        project["api_name"] = api_name
+        project["api_file_name"] = api_file_name
+        if state == "join":
+            project_path = (
+                client.sync_folder / author / "public" / __name__ / "running" / api_name
+            )
+        else:
+            project_path = (
+                client.sync_folder / client.email / __name__ / "running" / api_name
+            )
+        project["project_path"] = project_path
+
+        if state == "join":
+            join_projects.append(project)
+        elif state == "running":
+            running_projects.append(project)
+
+    print("join_projects", join_projects)
+    print("running_projects", running_projects)
+
+    # for project in join_projects:
+    #     if os.path.exists(project["project_path"]):
+    #         # move to running
+    #         running_path = Path(
+    #             str(project["yaml_join_path"]).replace("/join/", "/running/")
+    #         )
+    #         os.makedirs(running_path.parent, exist_ok=True)
+    #         shutil.copy(project["yaml_join_path"], running_path.parent)
+    #         old_join_path = Path(project["yaml_join_path"])
+    #         os.unlink(old_join_path)
+    #         os.rmdir(old_join_path.parent)
+
+    #         project_path = Path(project["project_path"])
+    #         # copy to local datasite
+    #         copy_destination = Path(
+    #             str(project_path)
+    #             .replace(project["author"], client.email)
+    #             .replace("/public/", "/")
+    #         )
+
+    #         os.makedirs(copy_destination, exist_ok=True)
+
+    #         if os.path.exists(copy_destination):
+    #             shutil.rmtree(copy_destination)
+    #         shutil.copytree(
+    #             project["project_path"], copy_destination, dirs_exist_ok=True
+    #         )
+
+    #         project["project_path"] = copy_destination
+    #         project["yaml_join_path"] = running_path
+    #         running_projects.append(project)
+
+    # for project in running_projects:
+    #     project_path = Path(project["project_path"])
+    #     public_running = Path(project["yaml_join_path"])
+    #     log_path = str(public_running).replace(".join", ".log")
+    #     pipeline = load_yaml(project_path / project["api_file_name"])
+    #     try:
+    #         run_steps_for_email(
+    #             client,
+    #             pipeline,
+    #             log_file=log_path,
+    #             timeout=120,
+    #         )
+    #     except Exception as e:
+    #         print(f"Error running project {project_path}: {str(e)}")
+    #         continue
+
+
 create_folders()
 generate_home()
+# run_projects()
