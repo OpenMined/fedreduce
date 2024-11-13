@@ -237,55 +237,55 @@ def run_projects():
     print("join_projects", join_projects)
     print("running_projects", running_projects)
 
-    # for project in join_projects:
-    #     if os.path.exists(project["project_path"]):
-    #         # move to running
-    #         running_path = Path(
-    #             str(project["yaml_join_path"]).replace("/join/", "/running/")
-    #         )
-    #         os.makedirs(running_path.parent, exist_ok=True)
-    #         shutil.copy(project["yaml_join_path"], running_path.parent)
-    #         old_join_path = Path(project["yaml_join_path"])
-    #         os.unlink(old_join_path)
-    #         os.rmdir(old_join_path.parent)
+    for project in join_projects:
+        if os.path.exists(project["project_path"]):
+            # move to running
+            running_path = Path(
+                str(project["yaml_join_path"]).replace("/join/", "/running/")
+            )
+            os.makedirs(running_path.parent, exist_ok=True)
+            shutil.copy(project["yaml_join_path"], running_path.parent)
+            old_join_path = Path(project["yaml_join_path"])
+            os.unlink(old_join_path)
+            os.rmdir(old_join_path.parent)
 
-    #         project_path = Path(project["project_path"])
-    #         # copy to local datasite
-    #         copy_destination = Path(
-    #             str(project_path)
-    #             .replace(project["author"], client.email)
-    #             .replace("/public/", "/")
-    #         )
+            project_path = Path(project["project_path"])
+            # copy to local datasite
+            copy_destination = Path(
+                str(project_path)
+                .replace(project["author"], client.email)
+                .replace("/public/", "/")
+            )
 
-    #         os.makedirs(copy_destination, exist_ok=True)
+            os.makedirs(copy_destination, exist_ok=True)
 
-    #         if os.path.exists(copy_destination):
-    #             shutil.rmtree(copy_destination)
-    #         shutil.copytree(
-    #             project["project_path"], copy_destination, dirs_exist_ok=True
-    #         )
+            if os.path.exists(copy_destination):
+                shutil.rmtree(copy_destination)
+            shutil.copytree(
+                project["project_path"], copy_destination, dirs_exist_ok=True
+            )
 
-    #         project["project_path"] = copy_destination
-    #         project["yaml_join_path"] = running_path
-    #         running_projects.append(project)
+            project["project_path"] = copy_destination
+            project["yaml_join_path"] = running_path
+            running_projects.append(project)
 
-    # for project in running_projects:
-    #     project_path = Path(project["project_path"])
-    #     public_running = Path(project["yaml_join_path"])
-    #     log_path = str(public_running).replace(".join", ".log")
-    #     pipeline = load_yaml(project_path / project["api_file_name"])
-    #     try:
-    #         run_steps_for_email(
-    #             client,
-    #             pipeline,
-    #             log_file=log_path,
-    #             timeout=120,
-    #         )
-    #     except Exception as e:
-    #         print(f"Error running project {project_path}: {str(e)}")
-    #         continue
+    for project in running_projects:
+        project_path = Path(project["project_path"])
+        public_running = Path(project["yaml_join_path"])
+        log_path = str(public_running).replace(".join", ".log")
+        pipeline = load_yaml(project_path / project["api_file_name"])
+        try:
+            run_steps_for_email(
+                client,
+                pipeline,
+                log_file=log_path,
+                timeout=120,
+            )
+        except Exception as e:
+            print(f"Error running project {project_path}: {str(e)}")
+            continue
 
 
 create_folders()
 generate_home()
-# run_projects()
+run_projects()

@@ -11,6 +11,9 @@ shared_inputs:
   data: &data FilePipe("{datasite}/data/data.txt")
   output: &output FilePipe("{datasite}/fedreduce/{project}/data/{step}/result.txt")
 
+shared_outputs:
+  result: &result FilePipe("{author}/fedreduce/{project}/data/result/result.txt")
+
 # Define the main workflow parameters
 workflow:
   datasites: &datasites []
@@ -20,6 +23,12 @@ steps:
   - first:
       inputs:
         - a: StaticPipe(0) # Override input for the first step
+  - last:
+      output:
+        path: *result
+        permissions:
+          read:
+            - *datasites
   - foreach: *datasites
     run: "{datasite}"
     function: "add"
