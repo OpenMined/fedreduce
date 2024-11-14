@@ -412,9 +412,9 @@ def run_projects():
 
 create_folders()
 generate_home()
-
-manual = bool(os.environ.get("MANUAL", False))
-if manual:
-    run_projects()
-else:
-    print("skipping run_projects")
+run_projects()
+# manual = bool(os.environ.get("MANUAL", False))
+# if manual:
+#     run_projects()
+# else:
+#     print("skipping run_projects")
