@@ -22,8 +22,7 @@ client = Client.load()
 
 __name__ = "fedreduce"
 __version__ = "1.0.0"
-# __author__ = "madhava@openmined.org"
-__author__ = "b@openmined.org"
+__author__ = "madhava@openmined.org"
 
 
 def create_folders():
