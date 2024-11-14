@@ -199,7 +199,7 @@ def run_steps_for_email(client, pipeline, log_file, timeout=10):
             logger.info("Running step %d for %s.", step_num, email)
             if datasite != email:
                 print("SKIPPING STEP", step_num, datasite, email)
-                logger.info("Skipping step %d for other datasite.", step_num, email)
+                logger.info("Skipping step %d for other datasite.", step_num)
                 continue
             print("RUNNING STEP", step_num, datasite, email)
             print("type", type(pipeline["author"]))
