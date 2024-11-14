@@ -1,5 +1,9 @@
 // syftbox-sdk.js
 (function () {
+  function getServerPort() {
+    return localStorage.getItem("serverPort") || "8080";
+  }
+
   function getGitHubRawUrl(githubUrl) {
     return (
       githubUrl
@@ -241,8 +245,9 @@
       );
 
       try {
+        let port = getServerPort();
         const response = await fetch(
-          `http://localhost:8080/apps/status/${apiName}`
+          `http://localhost:${serverPort}/apps/status/${apiName}`
         );
 
         if (response.status === 404) {
@@ -342,7 +347,8 @@
       `;
 
       try {
-        const response = await fetch("http://localhost:8080/apps/install", {
+        let port = getServerPort();
+        const response = await fetch(`http://localhost:${port}/apps/install`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

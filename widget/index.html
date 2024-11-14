@@ -786,6 +786,14 @@
       <div class="header-content">
         <h1 class="app-title">fedreduce</h1>
         <div class="server-input">
+          <script src="syftbox-sdk.js"></script>
+          <div id="syftbox-api-badge"></div>
+          <script>
+            document.addEventListener("DOMContentLoaded", async () => {
+              await APIBadge.initialized;
+              APIBadge.show("https://github.com/openmined/fedreduce");
+            });
+          </script>
           <label for="server-port">localhost:</label>
           <input
             type="number"
