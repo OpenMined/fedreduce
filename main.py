@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
-from run import run_steps_for_email
+from run import run_steps_for_email, check_done
 
 
 import yaml
@@ -62,6 +62,26 @@ def load_yaml(file_path):
         return yaml.safe_load(file)
 
 
+def extract_last_two_parts(yaml_path: str) -> str:
+    """Extract the last two parts of the YAML path."""
+    # Split the path into parts
+    path_parts = yaml_path.split(os.sep)
+
+    # Join the last two parts to get the desired output
+    last_two_parts = os.path.join(path_parts[-2], path_parts[-1])
+    return f"/{last_two_parts}"
+
+
+def extract_last_part(yaml_path: str) -> str:
+    """Extract the last parts of the YAML path."""
+    # Split the path into parts
+    path_parts = yaml_path.split(os.sep)
+
+    # Join the last two parts to get the desired output
+    last_part = os.path.join(path_parts[-1])
+    return f"/{last_part}"
+
+
 def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
     """Parse a project YAML file and return structured data with nested code entries."""
     with open(yaml_path, "r") as f:
@@ -79,8 +99,8 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
         state = "invite"
     elif "running" in str(yaml_path):
         state = "running"
-    elif "completed" in str(yaml_path):
-        state = "completed"
+    elif "complete" in str(yaml_path):
+        state = "complete"
     else:
         print("Unknown state", yaml_path)
 
@@ -91,11 +111,15 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
 
     datasites = list(datasites)
 
-    # Additional logic to check joined datasites
-    joined_datasites = []
+    last_part = extract_last_part(str(yaml_path))
+
     join_projects = datasites_file_glob(
-        client, pattern=f"**/public/{__name__}/**/*.yaml.join"
+        client, pattern=f"**/public/{__name__}/**/{last_part}.join"
     )
+
+    print("yaml_path", yaml_path)
+
+    print("join_projects", join_projects)
 
     for datasite, join_path in join_projects:
         # Extract the datasite email from the join path
@@ -104,6 +128,7 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
         datasites.append(datasite_email)
 
     datasites = sorted(list(set(datasites)))
+    print("datasites", datasites)
 
     # Construct base URLs using author and project
     url = public_url(os.path.dirname(yaml_path))
@@ -116,9 +141,8 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
     # Construct the project data with nested `code` dictionary and joined datasites
     project_data = {
         "state": state,
-        "name": yaml_data["project"].capitalize(),
+        "name": yaml_data["project"],
         "file_timestamp": timestamp.st_mtime,
-        "uid": yaml_data["uid"],
         "description": yaml_data["description"],
         "language": yaml_data["language"],
         "author": yaml_data["author"],
@@ -127,7 +151,6 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
         "datasites": datasites,
         "resultUrl": f"{base_url}/results",
         "code": code_data,  # Nested dictionary for code entries
-        "joined_datasites": joined_datasites,  # Include joined datasites
     }
 
     return project_data
@@ -136,7 +159,7 @@ def parse_yaml_project(datasite, yaml_path: str) -> Dict[str, Any]:
 def generate_activity_json(projects):
     """Generate activity.json from YAML project files."""
     # Initialize project categories
-    activity_data = {"invite": [], "running": [], "completed": []}
+    activity_data = {"invite": [], "running": [], "complete": []}
 
     for datasite, yaml_path in projects:
         try:
@@ -149,8 +172,8 @@ def generate_activity_json(projects):
                 activity_data["invite"].append(project_data)
             elif project_data["state"] == "running":
                 activity_data["running"].append(project_data)
-            elif project_data["state"] == "completed":
-                activity_data["completed"].append(project_data)
+            elif project_data["state"] == "complete":
+                activity_data["complete"].append(project_data)
 
         except Exception as e:
             print(traceback.format_exc())
@@ -195,6 +218,7 @@ def run_projects():
 
     join_projects = []
     running_projects = []
+    complete_projects = []
     for datasite, join_path in my_join_projects:
         print("join_path", join_path)
         project = {}
@@ -223,19 +247,27 @@ def run_projects():
             project_path = (
                 client.sync_folder / author / "public" / __name__ / "running" / api_name
             )
-        else:
+        elif state == "running":
             project_path = (
                 client.sync_folder / client.email / __name__ / "running" / api_name
             )
+        else:
+            project_path = (
+                client.sync_folder / client.email / __name__ / "complete" / api_name
+            )
+
         project["project_path"] = project_path
 
         if state == "join":
             join_projects.append(project)
         elif state == "running":
             running_projects.append(project)
+        else:
+            complete_projects.append(project)
 
     print("join_projects", join_projects)
     print("running_projects", running_projects)
+    print("complete_projects", complete_projects)
 
     for project in join_projects:
         if os.path.exists(project["project_path"]):
@@ -285,7 +317,104 @@ def run_projects():
             print(f"Error running project {project_path}: {str(e)}")
             continue
 
+        complete, is_author = check_done(
+            client,
+            pipeline,
+            project,
+            log_file=log_path,
+            timeout=120,
+        )
+        if complete:
+            complete_projects.append(project)
+
+        print("complete", complete)
+
+        if complete:
+            if is_author:
+                # move public src author only
+                redreduce_folder = (
+                    client.sync_folder / client.email / "public" / __name__
+                )
+                running_folder = redreduce_folder / "running" / project["api_name"]
+                complete_folder = redreduce_folder / "complete" / project["api_name"]
+
+                print("running_folder", running_folder)
+                print("complete_folder", complete_folder)
+
+                os.makedirs(complete_folder, exist_ok=True)
+
+                if os.path.exists(running_folder):
+                    # already complete"
+                    print("already complete")
+                    if os.path.exists(complete_folder):
+                        shutil.rmtree(complete_folder)
+
+                    shutil.move(running_folder, complete_folder.parent)
+
+                if os.path.exists(running_folder):
+                    shutil.rmtree(running_folder)
+
+                print("public source is now in compelted state")
+
+            # move the public join file and logs to complete
+            complete_path = Path(
+                str(project["yaml_join_path"]).replace("/running/", "/complete/")
+            )
+            print("complete_path", complete_path)
+
+            os.makedirs(complete_path.parent, exist_ok=True)
+
+            shutil.copy(project["yaml_join_path"], complete_path.parent)
+            old_join_path = Path(project["yaml_join_path"])
+
+            log_file = str(project["yaml_join_path"]).replace(".join", ".log")
+            shutil.copy(log_file, complete_path.parent)
+
+            if os.path.exists(old_join_path):
+                os.unlink(old_join_path)
+
+            if os.path.exists(log_file):
+                os.unlink(log_file)
+
+            try:
+                if os.path.exists(old_join_path.parent):
+                    os.rmdir(old_join_path.parent)
+            except Exception as e:
+                print("unable to remove", old_join_path.parent, e)
+
+            # finished moving the join file and logs to complete
+
+            # move private source to complete
+            project_path = Path(project["project_path"])
+            # copy to local datasite
+            copy_destination = Path(
+                str(project_path).replace("/running/", "/complete/")
+            )
+
+            os.makedirs(copy_destination, exist_ok=True)
+
+            if os.path.exists(copy_destination):
+                shutil.rmtree(copy_destination)
+
+            shutil.copytree(
+                project["project_path"], copy_destination, dirs_exist_ok=True
+            )
+
+            if os.path.exists(project["project_path"]):
+                shutil.rmtree(project["project_path"])
+
+            project["project_path"] = copy_destination
+            project["state"] = "complete"
+            complete_projects.append(project)
+
+    print(complete_projects)
+
 
 create_folders()
 generate_home()
-run_projects()
+
+manual = bool(os.environ.get("MANUAL", False))
+if manual:
+    run_projects()
+else:
+    print("skipping run_projects")

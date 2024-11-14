@@ -47,6 +47,12 @@ try:
             command = data["command"]
 
             if command == "join":
+                after_datasite = str(data["source"]).split("/datasites/")[-1]
+                source_path = client.sync_folder / after_datasite.replace(
+                    "/fedreduce/", "/public/fedreduce/"
+                )
+                yaml_file = find_first_yaml_file(source_path)
+                yaml_file_name = os.path.basename(str(yaml_file))
                 datasite = extract_datasite(data["source"])
                 folder = (
                     client.sync_folder
@@ -58,7 +64,7 @@ try:
                 )
                 if data["state"] == "join":
                     os.makedirs(folder, exist_ok=True)
-                    join_file = folder / "add.yaml.join"
+                    join_file = folder / f"{yaml_file_name}.join"
                     join_file.touch(exist_ok=True)
                     print(json.dumps({"result": "success"}))
                 elif data["state"] == "leave":
@@ -104,6 +110,13 @@ try:
             elif command == "start":
                 path = data["source"]
                 datasite = extract_datasite(path)
+                print(
+                    path,
+                    datasite,
+                    "/fedreduce/invite/" in path,
+                    datasite != client.email,
+                    client.email,
+                )
                 if "/fedreduce/invite/" in path:
                     if datasite != client.email:
                         print(json.dumps({"error": "Not your project, not authorized"}))

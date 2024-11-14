@@ -2,7 +2,6 @@ author: "c@openmined.org"
 project: "add"
 language: "python"
 description: "Add two numbers"
-uid: "445ef5f3-7d74-4cfd-ac73-bdc60173e756"
 code:
   - functions.py
 
@@ -40,3 +39,6 @@ steps:
       permissions:
         read:
           - "{next_datasite}"
+
+complete:
+  exists: *result
